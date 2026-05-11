@@ -5,17 +5,26 @@ import os
 app = Flask(__name__)
 
 # ==============================
-# DATABASE CONNECTION
+# DATABASE CONFIGURATION
 # ==============================
 
 DB_HOST = os.environ.get("DB_HOST")
+DB_PORT = os.environ.get("DB_PORT")
 DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 DB_NAME = os.environ.get("DB_NAME")
 
+db = None
+
+# ==============================
+# CONNECT TO MYSQL
+# ==============================
+
 try:
+
     db = mysql.connector.connect(
         host=DB_HOST,
+        port=DB_PORT,
         user=DB_USER,
         password=DB_PASSWORD,
         database=DB_NAME
@@ -24,6 +33,7 @@ try:
     print("✅ Connected to MySQL Database")
 
 except mysql.connector.Error as err:
+
     print("❌ Database Connection Failed")
     print(err)
 
@@ -34,9 +44,10 @@ except mysql.connector.Error as err:
 
 @app.route('/')
 def home():
+
     return """
     <h2>🌡️ IoT Sensor Server Running</h2>
-    <p>ESP + Flask + MySQL Server is active.</p>
+    <p>ESP + Flask + Railway MySQL Server is active.</p>
     """
 
 
@@ -47,6 +58,16 @@ def home():
 @app.route('/data', methods=['GET'])
 def receive_data():
 
+    global db
+
+    # Check database connection
+    if db is None:
+
+        return jsonify({
+            "status": "error",
+            "message": "Database not connected"
+        }), 500
+
     temp = request.args.get('temp')
     hum = request.args.get('hum')
 
@@ -54,9 +75,16 @@ def receive_data():
     print("Temperature:", temp)
     print("Humidity:", hum)
 
+    # Validate data
     if temp is not None and hum is not None:
 
         try:
+
+            # Reconnect if connection lost
+            if not db.is_connected():
+
+                db.reconnect()
+
             cursor = db.cursor()
 
             sql = """
@@ -76,12 +104,13 @@ def receive_data():
 
             return jsonify({
                 "status": "success",
-                "message": "Data saved"
+                "message": "Data saved successfully"
             }), 200
 
         except mysql.connector.Error as err:
 
-            print("❌ MySQL Error:", err)
+            print("❌ MySQL Insert Error")
+            print(err)
 
             return jsonify({
                 "status": "error",
@@ -90,18 +119,32 @@ def receive_data():
 
     return jsonify({
         "status": "error",
-        "message": "Invalid data"
+        "message": "Invalid sensor data"
     }), 400
 
 
 # ==============================
-# API FOR FLUTTER APP / DASHBOARD
+# GET DATA FOR FLUTTER APP
 # ==============================
 
 @app.route('/get-data', methods=['GET'])
 def get_data():
 
+    global db
+
+    if db is None:
+
+        return jsonify({
+            "status": "error",
+            "message": "Database not connected"
+        }), 500
+
     try:
+
+        # Reconnect if needed
+        if not db.is_connected():
+
+            db.reconnect()
 
         cursor = db.cursor()
 
@@ -121,8 +164,8 @@ def get_data():
         for r in reversed(rows):
 
             data.append({
-                "temperature": r[0],
-                "humidity": r[1],
+                "temperature": float(r[0]),
+                "humidity": float(r[1]),
                 "time": r[2].strftime("%H:%M:%S")
             })
 
@@ -130,7 +173,8 @@ def get_data():
 
     except mysql.connector.Error as err:
 
-        print("❌ Database Fetch Error:", err)
+        print("❌ Database Fetch Error")
+        print(err)
 
         return jsonify({
             "status": "error",
