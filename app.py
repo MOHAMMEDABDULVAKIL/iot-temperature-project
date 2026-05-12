@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 import mysql.connector
 import os
+from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 
@@ -37,7 +39,6 @@ except mysql.connector.Error as err:
     print("❌ Database Connection Failed")
     print(err)
 
-
 # ==============================
 # HOME ROUTE
 # ==============================
@@ -50,7 +51,6 @@ def home():
     <p>ESP + Flask + Railway MySQL Server is active.</p>
     """
 
-
 # ==============================
 # RECEIVE SENSOR DATA FROM ESP
 # ==============================
@@ -60,7 +60,6 @@ def receive_data():
 
     global db
 
-    # Check database connection
     if db is None:
 
         return jsonify({
@@ -75,12 +74,11 @@ def receive_data():
     print("Temperature:", temp)
     print("Humidity:", hum)
 
-    # Validate data
     if temp is not None and hum is not None:
 
         try:
 
-            # Reconnect if connection lost
+            # reconnect if connection lost
             if not db.is_connected():
 
                 db.reconnect()
@@ -122,7 +120,6 @@ def receive_data():
         "message": "Invalid sensor data"
     }), 400
 
-
 # ==============================
 # GET DATA FOR FLUTTER APP
 # ==============================
@@ -141,7 +138,7 @@ def get_data():
 
     try:
 
-        # Reconnect if needed
+        # reconnect if needed
         if not db.is_connected():
 
             db.reconnect()
@@ -161,12 +158,21 @@ def get_data():
 
         data = []
 
+        # Indian timezone
+        india = pytz.timezone('Asia/Kolkata')
+
         for r in reversed(rows):
+
+            utc_time = r[2]
+
+            india_time = utc_time.replace(
+                tzinfo=pytz.utc
+            ).astimezone(india)
 
             data.append({
                 "temperature": float(r[0]),
                 "humidity": float(r[1]),
-                "time": r[2].strftime("%H:%M:%S")
+                "time": india_time.strftime("%H:%M:%S")
             })
 
         return jsonify(data)
@@ -180,7 +186,6 @@ def get_data():
             "status": "error",
             "message": str(err)
         }), 500
-
 
 # ==============================
 # RUN FLASK SERVER
